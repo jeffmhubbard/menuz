@@ -1,0 +1,100 @@
+#!/usr/bin/env zsh
+
+#
+# menus with rofi and zsh arrays
+#
+
+# check for rofi
+(( $+commands[rofi] )) || exit 1
+
+menupath=${MENUZ_DIR:-$HOME/.config/menuz}
+labeledit=${MENUZ_LABEL_EDIT:-"  Edit Menu"}
+labelselect=${MENUZ_LABEL_SELECT:-"  Select Menu"}
+
+# build menu
+function menuz() {
+  typeset NAME
+  typeset -A ITEMS
+  local menu=$menupath/$1
+  local choice
+
+  # display specified menu
+  if [[ -f $menu ]]
+  then
+    source $menu
+
+    choice=$( ( _items ${(k)ITEMS[@]}) | rofi -dmenu -i -p $NAME)
+    if [[ -n $choice ]]
+    then
+      eval ${ITEMS[$choice]}
+    fi
+
+  # select menu to edit
+  elif [[ $1 == "-e" ]]
+  then
+    _edit
+
+  # select menu to display
+  elif [[ -n $menu ]]
+  then
+    _select
+  fi
+}
+
+# select menu
+function _select() {
+  typeset -A LIST
+  typeset NAME
+  typeset -A ITEMS
+  local entry
+  local choice
+
+  for entry ($menupath/*)
+  do
+    source $entry
+    LIST[$NAME]+=$(basename $entry)
+  done
+
+  choice=$( (_items ${(k)LIST[@]}) | rofi -dmenu -i -p $labelselect )
+  if [[ -n $choice ]]
+  then
+    menuz ${LIST[$choice]}
+  fi
+}
+
+# edit menus
+function _edit() {
+  typeset -A LIST
+  typeset NAME
+  typeset -A ITEMS
+  local entry
+  local choice
+
+  for entry ($menupath/*)
+  do
+    source $entry
+    LIST[$NAME]+=$entry
+  done
+
+  choice=$( (_items ${(k)LIST[@]}) | rofi -dmenu -i -p $labeledit )
+  if [[ -n $choice ]]
+  then
+    exec $TERMINAL -e $EDITOR ${LIST[$choice]}
+  fi
+}
+
+# get menu items
+function _items() {
+  local item
+
+  for item ($@)
+  do
+    echo $item
+  done
+}
+
+menuz $@
+
+exit 0
+
+# vim: ft=sh ts=2 sw=0 et:

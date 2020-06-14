@@ -1,0 +1,4 @@
+NAME=" Example"
+ITEMS=(
+  [" Man Page"]="$TERMINAL -e man man"
+)
