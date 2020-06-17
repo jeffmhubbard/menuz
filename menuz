@@ -4,15 +4,14 @@
 # menus with rofi\fzf and zsh arrays
 #
 
+# Set path to menu files
 typeset menudir=${MENUZ_DIR:-$HOME/.config/menuz}
 
-# check for rofi
-(( $+commands[rofi] )) || \
-  { echo "Could not locate rofi!"; exit 1 }
+# Check for rofi
+typeset has_rofi=$+commands[rofi]
 
 # check for fzf
-(( $+commands[fzf] )) || \
-  { echo "Could not locate fzf!"; exit 1 }
+typeset has_fzf=$+commands[fzf]
 
 # check for $menudir
 [[ -d $menudir ]] || \
@@ -20,8 +19,8 @@ typeset menudir=${MENUZ_DIR:-$HOME/.config/menuz}
 
 # build menu
 function _show_menu() {
-  typeset NAME
-  typeset -A ITEMS
+  local NAME
+  local -A ITEMS
   local menu=$menudir/$1
   local choice
 
@@ -47,11 +46,11 @@ function _show_menu() {
   fi
 }
 
-# select menu
+# Select menu
 function _select_menu() {
-  typeset -A LIST
-  typeset NAME
-  typeset -A ITEMS
+  local -A LIST
+  local NAME
+  local -A ITEMS
   local menu
   local choice
   local title=${MENUZ_LABEL_SELECT:-"Select Menu"}
@@ -71,9 +70,9 @@ function _select_menu() {
 
 # Edit
 function _edit_menu() {
-  typeset -A LIST
-  typeset NAME
-  typeset -A ITEMS
+  local -A LIST
+  local NAME
+  local -A ITEMS
   local menu
   local choice
   local title=${MENUZ_LABEL_EDIT:-"Edit Menu"}
@@ -101,8 +100,11 @@ function _get_ui() {
   local shell=$(readlink -f "$SHELL")
   if [[ $proc == $shell ]] || [[ ${proc:t} == "tmux" ]]
   then
-    echo "fzf -e --layout=reverse --header='$@'"
+    (( $has_fzf )) || return 1
+    local layout=${MENUZ_FZF_LAYOUT:-"reverse"}
+    echo "fzf -e --layout=$layout --header='$@'"
   else
+    (( $has_rofi )) || return 1
     echo "rofi -dmenu -i -p '$@'"
   fi
 }
