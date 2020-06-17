@@ -1,21 +1,28 @@
 #!/usr/bin/env zsh
 
 #
-# menus with rofi and zsh arrays
+# menus with rofi\fzf and zsh arrays
 #
 
-# check for rofi
-(( $+commands[rofi] )) || exit 1
+typeset menudir=${MENUZ_DIR:-$HOME/.config/menuz}
 
-menupath=${MENUZ_DIR:-$HOME/.config/menuz}
-labeledit=${MENUZ_LABEL_EDIT:-"  Edit Menu"}
-labelselect=${MENUZ_LABEL_SELECT:-"  Select Menu"}
+# check for rofi
+(( $+commands[rofi] )) || \
+  { echo "Could not locate rofi!"; exit 1 }
+
+# check for fzf
+(( $+commands[fzf] )) || \
+  { echo "Could not locate fzf!"; exit 1 }
+
+# check for $menudir
+[[ -d $menudir ]] || \
+  { echo "$menudir does not exist!"; exit 1 }
 
 # build menu
-function menuz() {
+function _show_menu() {
   typeset NAME
   typeset -A ITEMS
-  local menu=$menupath/$1
+  local menu=$menudir/$1
   local choice
 
   # display specified menu
@@ -23,7 +30,7 @@ function menuz() {
   then
     source $menu
 
-    choice=$( ( _items ${(k)ITEMS[@]}) | rofi -dmenu -i -p $NAME)
+    choice=$( ( _get_items ${(k)ITEMS[@]}) | eval "$(_get_ui $NAME)")
     if [[ -n $choice ]]
     then
       eval ${ITEMS[$choice]}
@@ -32,68 +39,75 @@ function menuz() {
   # select menu to edit
   elif [[ $1 == "-e" ]]
   then
-    _edit
+    _edit_menu
 
   # select menu to display
-  elif [[ -n $menu ]]
-  then
-    _select
+  else
+    _select_menu
   fi
 }
 
 # select menu
-function _select() {
+function _select_menu() {
   typeset -A LIST
   typeset NAME
   typeset -A ITEMS
-  local entry
+  local menu
   local choice
+  local title=${MENUZ_LABEL_SELECT:-"Select Menu"}
 
-  for entry ($menupath/*)
+  for menu ($menudir/*)
   do
-    source $entry
-    LIST[$NAME]+=$(basename $entry)
+    source $menu
+    LIST[$NAME]+=$(basename $menu)
   done
 
-  choice=$( (_items ${(k)LIST[@]}) | rofi -dmenu -i -p $labelselect )
+  choice=$( (_get_items ${(k)LIST[@]}) | eval "$(_get_ui $title)")
   if [[ -n $choice ]]
   then
-    menuz ${LIST[$choice]}
+    _show_menu ${LIST[$choice]}
   fi
 }
 
-# edit menus
-function _edit() {
+# Edit
+function _edit_menu() {
   typeset -A LIST
   typeset NAME
   typeset -A ITEMS
-  local entry
+  local menu
   local choice
+  local title=${MENUZ_LABEL_EDIT:-"Edit Menu"}
 
-  for entry ($menupath/*)
+  for menu ($menudir/*)
   do
-    source $entry
-    LIST[$NAME]+=$entry
+    source $menu
+    LIST[$NAME]+=$menu
   done
 
-  choice=$( (_items ${(k)LIST[@]}) | rofi -dmenu -i -p $labeledit )
+  choice=$( (_get_items ${(k)LIST[@]}) | eval "$(_get_ui $title)")
   if [[ -n $choice ]]
   then
     exec $TERMINAL -e $EDITOR ${LIST[$choice]}
   fi
 }
 
-# get menu items
-function _items() {
-  local item
+# Print menu items
+function _get_items() { local i; for i ($@); do echo $i; done }
 
-  for item ($@)
-  do
-    echo $item
-  done
+# Determine if script was called from terminal or GUI
+# and return appropriate UI
+function _get_ui() {
+  local proc=$(readlink -f /proc/$(ps -o ppid:1= -p $$)/exe)
+  local shell=$(readlink -f "$SHELL")
+  if [[ $proc == $shell ]] || [[ ${proc:t} == "tmux" ]]
+  then
+    echo "fzf -e --layout=reverse --header='$@'"
+  else
+    echo "rofi -dmenu -i -p '$@'"
+  fi
 }
 
-menuz $@
+_show_menu $@
 
 exit 0
 
