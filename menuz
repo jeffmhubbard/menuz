@@ -7,110 +7,147 @@
 # Set path to menu files
 typeset menudir=${MENUZ_DIR:-$HOME/.config/menuz}
 
-# Check for rofi
-typeset has_rofi=$+commands[rofi]
+typeset editor="${MENUZ_EDITOR:-$EDITOR}"
+typeset terminal="${MENUZ_TERMINAL:-$TERMINAL} -e"
+ 
+# Display specified menu or call select_menu
+function show_menu() {
+    local title
+    local menu=$1
+    local choice
 
-# check for fzf
-typeset has_fzf=$+commands[fzf]
+    local NAME
+    local -A ITEMS
 
-# check for $menudir
-[[ -d $menudir ]] || \
-  { echo "$menudir does not exist!"; exit 1 }
+    if [[ -f $menudir/$menu ]]
+    then
+        # Menu was specified (and exists)
+        source $menudir/$menu
+        title=${NAME:-"menuz"}
 
-# build menu
-function _show_menu() {
-  local NAME
-  local -A ITEMS
-  local menu=$menudir/$1
-  local choice
+        choice=$( ( _items ${(k)ITEMS[@]}) | eval "$(_ui $title)")
+        if [[ -n $choice ]]
+        then
+            eval ${ITEMS[$choice]}
+        fi
+    else
+        # Or select from menu
+        choice=$(select_menu)
+        if [[ -f $menudir/$choice ]]
+        then
+            show_menu $choice
+        fi
+    fi
+}
 
-  # display specified menu
-  if [[ -f $menu ]]
-  then
-    source $menu
+# Present UI to select menu
+function select_menu() {
+    local choice
+    local title=${MENUZ_LABEL_SELECT:-"Select Menu"}
 
-    choice=$( ( _get_items ${(k)ITEMS[@]}) | eval "$(_get_ui $NAME)")
+    local -A LIST
+    local NAME
+    local -A ITEMS
+
+    # Get list of menu files
+    for menu ($menudir/*)
+    do
+        source $menu
+        LIST[$NAME]+=$(basename $menu)
+    done
+
+    choice=$( (_items ${(k)LIST[@]}) | eval "$(_ui $title)")
     if [[ -n $choice ]]
     then
-      eval ${ITEMS[$choice]}
+        echo ${LIST[$choice]}
+    fi
+}
+
+# Edit existing or create new menu files
+function edit_menu() {
+    local menu=$1
+    local menupath
+    local title=${MENUZ_LABEL_EDIT:-"Edit Menu"}
+
+    local -A LIST
+    local NAME
+    local -A ITEMS
+
+    if [[ -n $menu ]]
+    then
+        # Menu name was provided
+        menupath=$menudir/$menu
+    else
+        # Or present UI to select menu
+        for menu ($menudir/*)
+        do
+            source $menu
+            LIST[$NAME]+=$menu
+        done
+
+        choice=$( (_items ${(k)LIST[@]}) | eval "$(_ui $title)")
+        menupath=${LIST[$choice]}
     fi
 
-  # select menu to edit
-  elif [[ $1 == "-e" ]]
-  then
-    _edit_menu
+    # If menu name provided doesn't exist, create it
+    [[ ! -f $menupath ]] && touch $menupath
 
-  # select menu to display
-  else
-    _select_menu
-  fi
+    # Edit menu file
+    eval "$(_editor $menupath)"
 }
 
-# Select menu
-function _select_menu() {
-  local -A LIST
-  local NAME
-  local -A ITEMS
-  local menu
-  local choice
-  local title=${MENUZ_LABEL_SELECT:-"Select Menu"}
+# Prints menu items to UI
+function _items() { local i; for i ($@); do echo $i; done }
 
-  for menu ($menudir/*)
-  do
-    source $menu
-    LIST[$NAME]+=$(basename $menu)
-  done
-
-  choice=$( (_get_items ${(k)LIST[@]}) | eval "$(_get_ui $title)")
-  if [[ -n $choice ]]
-  then
-    _show_menu ${LIST[$choice]}
-  fi
+# Determine if script was called from GUI or CLI
+function _env() {
+    local proc=$(readlink -f /proc/$(ps -o ppid:1= -p $$)/exe)
+    local shell=$(readlink -f "$SHELL")
+    if [[ $proc != $shell ]] || [[ ${proc:t} != "tmux" ]]
+    then
+        # GUI
+        return 0
+    else
+        # CLI
+        return 1
+    fi
 }
 
-# Edit
-function _edit_menu() {
-  local -A LIST
-  local NAME
-  local -A ITEMS
-  local menu
-  local choice
-  local title=${MENUZ_LABEL_EDIT:-"Edit Menu"}
-
-  for menu ($menudir/*)
-  do
-    source $menu
-    LIST[$NAME]+=$menu
-  done
-
-  choice=$( (_get_items ${(k)LIST[@]}) | eval "$(_get_ui $title)")
-  if [[ -n $choice ]]
-  then
-    exec $TERMINAL -e $EDITOR ${LIST[$choice]}
-  fi
+# Return UI for GUI or CLI
+function _ui() {
+    local title=$1
+    if $(_env)
+    then
+        echo "rofi -dmenu -i -p '$title'"
+    else
+        local layout=${MENUZ_FZF_LAYOUT:-"reverse"}
+        echo "fzf -e --layout=$layout --header='$title'"
+    fi
 }
 
-# Print menu items
-function _get_items() { local i; for i ($@); do echo $i; done }
-
-# Determine if script was called from terminal or GUI
-# and return appropriate UI
-function _get_ui() {
-  local proc=$(readlink -f /proc/$(ps -o ppid:1= -p $$)/exe)
-  local shell=$(readlink -f "$SHELL")
-  if [[ $proc == $shell ]] || [[ ${proc:t} == "tmux" ]]
-  then
-    (( $has_fzf )) || return 1
-    local layout=${MENUZ_FZF_LAYOUT:-"reverse"}
-    echo "fzf -e --layout=$layout --header='$@'"
-  else
-    (( $has_rofi )) || return 1
-    echo "rofi -dmenu -i -p '$@'"
-  fi
+# Return editor for GUI or CLI
+function _editor() {
+    local menu=$1
+    if $(_env)
+    then
+        echo "$terminal -e $editor $menu"
+    else
+        echo "$editor $menu"
+    fi
 }
 
-_show_menu $@
+# Not so helpful
+function usage() { return }
+
+# Process arguments
+for arg in $@
+do
+  case $arg in
+    -h | --help) usage; exit 1;;
+    -e | --edit) edit_menu $2; exit 0;;
+  esac
+done
+
+show_menu $@
 
 exit 0
-
-# vim: ft=sh ts=2 sw=0 et:
