@@ -1,4 +1,11 @@
+# vim: ft=zsh
+
+# A menu file needs to contain the variable `NAME`
+# and an associative array `ITEMS`.
+
 NAME=" Example"
 ITEMS=(
-  [" Man Page"]="$TERMINAL -e man man"
+  [" RTFM"]="$terminal man man"
+  [" WWW"]="$browser www.url.com"
+  [" RC"]="$terminal $editor $HOME/.zshrc"
 )

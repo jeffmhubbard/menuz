@@ -1,0 +1,13 @@
+# vim: ft=zsh
+
+# Simple bookmarks menu using anonymous function
+# to build `ITEMS` array on-the-fly
+
+typeset links=$HOME/.config/qutebrowser/bookmarks/urls
+() {
+    while IFS=' ' read -A line; do
+      local name=" ${line[@]:1}"
+      ITEMS[$name]="$browser ${line[1]}"
+    done < ${MENUZ_BOOKMARK_LIST:-$links}
+}
+NAME="  Bookmarks"

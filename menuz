@@ -7,97 +7,101 @@
 # Set path to menu files
 typeset -g menudir=${MENUZ_DIR:-$HOME/.config/menuz}
 
-# Set editor and terminal for menu editing
+# Set some common apps as globals
 typeset -g editor="${EDITOR:-"vim"}"
 typeset -g terminal="${TERMINAL:-"xterm"} -e"
-
+typeset -g browser="${BROWSER:-"qutebrowser"}"
 
 # Display specified menu or call select_menu
 function show_menu() {
-    local menu=$1
-    local choice
-    local prompt
+  local menu=$1
+  local choice
+  local prompt
 
-    local NAME
-    local -A ITEMS
+  local NAME
+  local -A ITEMS
 
-    if [[ -f $menudir/$menu ]]
+  if [[ -f $menudir/$menu ]]
+  then
+    # Menu was specified (and exists)
+    source $menudir/$menu
+    prompt=${NAME:-"menuz"}
+
+    choice=$( ( _items ${(k)ITEMS[@]}) | eval "$(_picker $prompt)")
+    if [[ -n $choice ]]
     then
-        # Menu was specified (and exists)
-        source $menudir/$menu
-        prompt=${NAME:-"menuz"}
-
-        choice=$( ( _items ${(k)ITEMS[@]}) | eval "$(_picker $prompt)")
-        if [[ -n $choice ]]
-        then
-            eval ${ITEMS[$choice]}
-        fi
-    else
-        # Or select from menu
-        choice=$(select_menu)
-        if [[ -f $menudir/$choice ]]
-        then
-            show_menu $choice
-        fi
+      eval ${ITEMS[$choice]}
     fi
+  else
+    # Or select from menu
+    choice=$(select_menu)
+    if [[ -f $menudir/$choice ]]
+    then
+      show_menu $choice
+    fi
+  fi
 }
 
 # Present UI to select menu
 function select_menu() {
-    local choice
-    local prompt=${MENUZ_LABEL_SELECT:-"Select Menu"}
+  local choice
+  local prompt=${MENUZ_PROMPT_SELECT:-"Select Menu"}
 
-    local -A LIST
-    local NAME
-    local -A ITEMS
+  local -A LIST
+  local NAME
+  local -A ITEMS
 
-    # Get list of menu files
+  # Get list of menu files
+  for menu ($menudir/*)
+  do
+    source $menu
+    LIST[$NAME]+=${menu:t}
+  done
+
+  choice=$( (_items ${(k)LIST[@]}) | eval "$(_picker $prompt)")
+  if [[ -n $choice ]]
+  then
+    echo ${LIST[$choice]}
+  else
+    return 1
+  fi
+}
+
+# Edit existing or create new menu files
+function edit_menu() {
+  local menu=$1
+  local menupath
+  local prompt=${MENUZ_PROMPT_EDIT:-"Edit Menu"}
+
+  local -A LIST
+  local NAME
+  local -A ITEMS
+
+  if [[ -n $menu ]]
+  then
+    # Menu name was provided
+    menupath=$menudir/$menu
+  else
+    # Or present UI to select menu
     for menu ($menudir/*)
     do
-        source $menu
-        LIST[$NAME]+=${menu:t}
+      source $menu
+      LIST[$NAME]+=$menu
     done
 
     choice=$( (_items ${(k)LIST[@]}) | eval "$(_picker $prompt)")
     if [[ -n $choice ]]
     then
-        echo ${LIST[$choice]}
-    fi
-}
-
-# Edit existing or create new menu files
-function edit_menu() {
-    local menu=$1
-    local menupath
-    local prompt=${MENUZ_LABEL_EDIT:-"Edit Menu"}
-
-    local -A LIST
-    local NAME
-    local -A ITEMS
-
-    if [[ -n $menu ]]
-    then
-        # Menu name was provided
-        menupath=$menudir/$menu
+      menupath=${LIST[$choice]}
     else
-        # Or present UI to select menu
-        for menu ($menudir/*)
-        do
-            source $menu
-            LIST[$NAME]+=$menu
-        done
-
-        choice=$( (_items ${(k)LIST[@]}) | eval "$(_picker $prompt)")
-        if [[ -n $choice ]]
-        then
-            menupath=${LIST[$choice]}
-        fi
+      return 1
     fi
+  fi
 
-    # If menu name provided doesn't exist, create it
-    [[ ! -f $menupath ]] && touch $menupath
+  # If menu name provided doesn't exist, create it
+  [[ ! -f $menupath ]] && touch $menupath
 
-    eval "$(_editor $menupath)"
+  eval "$(_editor $menupath)"
 }
 
 # Prints menu items for picker
@@ -146,14 +150,20 @@ function _editor() {
 }
 
 # Not so helpful
-function usage() { return }
+function usage() {
+  echo "menuz [-e] <menu>"
+}
 
 # Process arguments
 for arg in $@
 do
   case $arg in
-    -h | --help) usage; exit 0;;
-    -e | --edit) edit_menu $2; exit 0;;
+    -h | --help)
+      usage;
+      exit 0;;
+    -e | --edit)
+      edit_menu $2;
+      exit 0;;
   esac
 done
 
