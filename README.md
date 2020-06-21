@@ -1,24 +1,27 @@
 # menuz
 
-```
+```sh
+# call specific menu
+$ menuz <name>
+
 # select menu from list
 $ menuz
 
-# call specific menu
-$ menuz <menu>
+# edit menu file
+$ menuz -e <name>
 
-# select and edit menu files
+# select and edit
 $ menuz -e
 ```
 
-```
+```sh
 # menu file
 NAME=" Example"
 ITEMS=(
-  [" Terminal"]="$TERMINAL"
-  [" Editor"]="$TERMINAL -e $EDITOR"
+  [" Terminal"]="$terminal"
+  [" Editor"]="$terminal $editor"
   [" Browser"]="$BROWSER"
-  [" Email"]="$TERMINAL -e neomutt"
-  [" Chat"]="$TERMINAL -e irssi"
+  [" Email"]="$terminal neomutt"
+  [" Chat"]="$terminal irssi"
 )
 ```

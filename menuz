@@ -5,16 +5,18 @@
 #
 
 # Set path to menu files
-typeset menudir=${MENUZ_DIR:-$HOME/.config/menuz}
+typeset -g menudir=${MENUZ_DIR:-$HOME/.config/menuz}
 
-typeset editor="${MENUZ_EDITOR:-$EDITOR}"
-typeset terminal="${MENUZ_TERMINAL:-$TERMINAL} -e"
- 
+# Set editor and terminal for menu editing
+typeset -g editor="${EDITOR:-"vim"}"
+typeset -g terminal="${TERMINAL:-"xterm"} -e"
+
+
 # Display specified menu or call select_menu
 function show_menu() {
-    local title
     local menu=$1
     local choice
+    local prompt
 
     local NAME
     local -A ITEMS
@@ -23,9 +25,9 @@ function show_menu() {
     then
         # Menu was specified (and exists)
         source $menudir/$menu
-        title=${NAME:-"menuz"}
+        prompt=${NAME:-"menuz"}
 
-        choice=$( ( _items ${(k)ITEMS[@]}) | eval "$(_ui $title)")
+        choice=$( ( _items ${(k)ITEMS[@]}) | eval "$(_picker $prompt)")
         if [[ -n $choice ]]
         then
             eval ${ITEMS[$choice]}
@@ -43,7 +45,7 @@ function show_menu() {
 # Present UI to select menu
 function select_menu() {
     local choice
-    local title=${MENUZ_LABEL_SELECT:-"Select Menu"}
+    local prompt=${MENUZ_LABEL_SELECT:-"Select Menu"}
 
     local -A LIST
     local NAME
@@ -53,10 +55,10 @@ function select_menu() {
     for menu ($menudir/*)
     do
         source $menu
-        LIST[$NAME]+=$(basename $menu)
+        LIST[$NAME]+=${menu:t}
     done
 
-    choice=$( (_items ${(k)LIST[@]}) | eval "$(_ui $title)")
+    choice=$( (_items ${(k)LIST[@]}) | eval "$(_picker $prompt)")
     if [[ -n $choice ]]
     then
         echo ${LIST[$choice]}
@@ -67,7 +69,7 @@ function select_menu() {
 function edit_menu() {
     local menu=$1
     local menupath
-    local title=${MENUZ_LABEL_EDIT:-"Edit Menu"}
+    local prompt=${MENUZ_LABEL_EDIT:-"Edit Menu"}
 
     local -A LIST
     local NAME
@@ -85,55 +87,62 @@ function edit_menu() {
             LIST[$NAME]+=$menu
         done
 
-        choice=$( (_items ${(k)LIST[@]}) | eval "$(_ui $title)")
-        menupath=${LIST[$choice]}
+        choice=$( (_items ${(k)LIST[@]}) | eval "$(_picker $prompt)")
+        if [[ -n $choice ]]
+        then
+            menupath=${LIST[$choice]}
+        fi
     fi
 
     # If menu name provided doesn't exist, create it
     [[ ! -f $menupath ]] && touch $menupath
 
-    # Edit menu file
     eval "$(_editor $menupath)"
 }
 
-# Prints menu items to UI
+# Prints menu items for picker
 function _items() { local i; for i ($@); do echo $i; done }
 
-# Determine if script was called from GUI or CLI
+# Determine if script was called from CLI or GUI
 function _env() {
-    local proc=$(readlink -f /proc/$(ps -o ppid:1= -p $$)/exe)
-    local shell=$(readlink -f "$SHELL")
-    if [[ $proc != $shell ]] || [[ ${proc:t} != "tmux" ]]
-    then
-        # GUI
-        return 0
-    else
-        # CLI
-        return 1
-    fi
+  local proc shell
+
+  # Process script was called from
+  proc=$(readlink -f /proc/$(ps -o ppid:1= -p $$)/exe)
+
+  # User's shell
+  shell=$(readlink -f "$SHELL")
+
+  if [[ $proc == $shell ]] || [[ ${proc:t} == "tmux" ]]
+  then
+    return 1 # CLI
+  else
+    return 0 # GUI
+  fi
 }
 
-# Return UI for GUI or CLI
-function _ui() {
-    local title=$1
-    if $(_env)
-    then
-        echo "rofi -dmenu -i -p '$title'"
-    else
-        local layout=${MENUZ_FZF_LAYOUT:-"reverse"}
-        echo "fzf -e --layout=$layout --header='$title'"
-    fi
+# Return picker for GUI or CLI
+function _picker() {
+  local prompt=$1
+
+  if $(_env)
+  then
+    echo "rofi -dmenu -i -p '$prompt'"
+  else
+    echo "fzf --reverse --no-info --prompt='$prompt: '"
+  fi
 }
 
 # Return editor for GUI or CLI
 function _editor() {
-    local menu=$1
-    if $(_env)
-    then
-        echo "$terminal -e $editor $menu"
-    else
-        echo "$editor $menu"
-    fi
+  local file=$1
+
+  if $(_env)
+  then
+    eval "$terminal $editor $file"
+  else
+    eval "$editor $file"
+  fi
 }
 
 # Not so helpful
@@ -143,7 +152,7 @@ function usage() { return }
 for arg in $@
 do
   case $arg in
-    -h | --help) usage; exit 1;;
+    -h | --help) usage; exit 0;;
     -e | --edit) edit_menu $2; exit 0;;
   esac
 done
@@ -151,3 +160,5 @@ done
 show_menu $@
 
 exit 0
+
+# vim: ft=zsh ts=2 sw=0 et:
