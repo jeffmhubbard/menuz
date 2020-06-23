@@ -1,0 +1,15 @@
+# vim: ft=zsh
+
+# A menu file needs to contain the variable `NAME`
+# and an associative array `ITEMS`.
+# $browser, $editor & $terminal
+# Prefix commands that need a terminal with ##TERM##
+# If called from GUI, they open a terminal; if
+# called from CLI, they will run in current terminal
+
+NAME=" Example"
+ITEMS=(
+  [" RTFM"]="$terminal man man"
+  [" WWW"]="$browser www.url.com"
+  [" RC"]="##TERM## $editor $HOME/.zshrc"
+)

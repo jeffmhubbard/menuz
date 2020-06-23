@@ -1,16 +1,6 @@
 #!/usr/bin/env zsh
 
-#
-# menus with rofi\fzf and zsh arrays
-#
-
-# Set path to menu files
-typeset -g menudir=${MENUZ_DIR:-$HOME/.config/menuz}
-
-# Set some common apps as globals
-typeset -g editor="${EDITOR:-"vim"}"
-typeset -g terminal="${TERMINAL:-"xterm"} -e"
-typeset -g browser="${BROWSER:-"qutebrowser"}"
+# menus with rofi, fzf, and zsh
 
 # Display specified menu or call select_menu
 function show_menu() {
@@ -27,14 +17,15 @@ function show_menu() {
     source $menudir/$menu
     prompt=${NAME:-"menuz"}
 
-    choice=$( ( _items ${(k)ITEMS[@]}) | eval "$(_picker $prompt)")
+    choice=$( ( _list_items ${(k)ITEMS[@]}) | eval "$(_get_ui $prompt)")
     if [[ -n $choice ]]
     then
-      eval ${ITEMS[$choice]}
+      _run_cmd ${ITEMS[$choice]}
     fi
   else
     # Or select from menu
     choice=$(select_menu)
+    [[ ! $choice ]] && return 1
     if [[ -f $menudir/$choice ]]
     then
       show_menu $choice
@@ -58,7 +49,7 @@ function select_menu() {
     LIST[$NAME]+=${menu:t}
   done
 
-  choice=$( (_items ${(k)LIST[@]}) | eval "$(_picker $prompt)")
+  choice=$( (_list_items ${(k)LIST[@]}) | eval "$(_get_ui $prompt)")
   if [[ -n $choice ]]
   then
     echo ${LIST[$choice]}
@@ -89,7 +80,7 @@ function edit_menu() {
       LIST[$NAME]+=$menu
     done
 
-    choice=$( (_items ${(k)LIST[@]}) | eval "$(_picker $prompt)")
+    choice=$( (_list_items ${(k)LIST[@]}) | eval "$(_get_ui $prompt)")
     if [[ -n $choice ]]
     then
       menupath=${LIST[$choice]}
@@ -99,16 +90,25 @@ function edit_menu() {
   fi
 
   # If menu name provided doesn't exist, create it
-  [[ ! -f $menupath ]] && touch $menupath
+  if [[ ! -f $menupath ]]
+  then
+    if _confirm "Create $menu?"
+    then
+      echo -n "NAME=\"New\"\nITEMS=(\n\t[entry]=\"\"\n)" > $menupath
+    else
+      return 1
+    fi
+  fi
 
-  eval "$(_editor $menupath)"
+  # Finally, edit menu
+  _run_cmd "##TERM## $editor $menupath"
 }
 
 # Prints menu items for picker
-function _items() { local i; for i ($@); do echo $i; done }
+function _list_items() { local i; for i ($@); do echo $i; done }
 
 # Determine if script was called from CLI or GUI
-function _env() {
+function _detect_ui() {
   local proc shell
 
   # Process script was called from
@@ -117,42 +117,90 @@ function _env() {
   # User's shell
   shell=$(readlink -f "$SHELL")
 
+  # When proc is your shell or tmux, assume CLI, else GUI
   if [[ $proc == $shell ]] || [[ ${proc:t} == "tmux" ]]
   then
-    return 1 # CLI
+    UI=0
   else
-    return 0 # GUI
+    UI=1
   fi
 }
 
 # Return picker for GUI or CLI
-function _picker() {
-  local prompt=$1
+function _get_ui() {
+  local title=$@
 
-  if $(_env)
+  if [[ $UI == 0 ]]
   then
-    echo "rofi -dmenu -i -p '$prompt'"
+    _fzf $title
+  elif [[ $UI == 1 ]]
+  then
+    _rofi $title
   else
-    echo "fzf --reverse --no-info --prompt='$prompt: '"
+    return 1
   fi
 }
 
-# Return editor for GUI or CLI
-function _editor() {
-  local file=$1
+# Return GUI picker
+function _rofi() { echo "rofi -dmenu -i -p '$1'" }
 
-  if $(_env)
+# Return CLI picker
+function _fzf() { echo "fzf --reverse --no-info --prompt='$1: '" }
+
+# Return editor
+function _editor() { _run_cmd "##TERM## $editor $1" }
+
+function _confirm() {
+  local choice
+
+  choice=$( echo -n "Yes\nNo" | eval "$(_get_ui $1)")
+  if [[ ! $choice == Yes ]]
   then
-    eval "$terminal $editor $file"
-  else
-    eval "$editor $file"
+    return 1
   fi
+
+  return
+}
+
+# Process command string and execute
+function _run_cmd() {
+  local -a command=(${=*})
+
+  # run commands with or without terminal
+  if [[ $command[1] == "##TERM##" ]]
+  then
+    if [[ $UI == 0 ]]
+    then
+      # CLI, remove prefix
+      command[1]=""
+    else
+      # GUI, replace prefix
+      command[1]=$terminal
+    fi
+  fi
+
+  eval ${command[@]}
 }
 
 # Not so helpful
 function usage() {
-  echo "menuz [-e] <menu>"
+  echo "menuz [-e] <name>"
 }
+
+
+# Set path to menu files
+typeset -g menudir=${MENUZ_DIR:-$HOME/.config/menuz}
+[[ ! -d $menudir ]] && { echo "'$menudir' does not exist!"; exit 1 }
+
+# Set some common programs as globals
+typeset -g terminal="${TERMINAL:-"xterm"} -e" # <- appends '-e'
+typeset -g editor=${EDITOR:-"vim"}
+typeset -g browser=${BROWSER:-"qutebrowser"}
+typeset -g opener=${commands[xdg-open]}
+
+# Detect environment
+typeset -gi UI
+_detect_ui
 
 # Process arguments
 for arg in $@
@@ -167,6 +215,7 @@ do
   esac
 done
 
+# Display menu
 show_menu $@
 
 exit 0
