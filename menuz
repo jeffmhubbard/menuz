@@ -1,6 +1,17 @@
 #!/usr/bin/env zsh
 
 # menus with rofi, fzf, and zsh
+typeset appname=${0:A:t}
+typeset appver=0.1
+
+# Set path to menu files
+typeset -g menudir=${MENUZ_DIR:-$HOME/.config/menuz}
+
+# Set some common programs as globals
+typeset -g terminal="${TERMINAL:-"xterm"} -e" # <- appends '-e'
+typeset -g editor=${EDITOR:-"vim"}
+typeset -g browser=${BROWSER:-"qutebrowser"}
+typeset -g opener=${commands[xdg-open]}
 
 # Display specified menu or call select_menu
 function show_menu() {
@@ -15,7 +26,7 @@ function show_menu() {
   then
     # Menu was specified (and exists)
     source $menudir/$menu
-    prompt=${NAME:-"menuz"}
+    prompt=$NAME
 
     choice=$( ( _list_items ${(k)ITEMS[@]}) | eval "$(_get_ui $prompt)")
     if [[ -n $choice ]]
@@ -25,10 +36,11 @@ function show_menu() {
   else
     # Or select from menu
     choice=$(select_menu)
-    [[ ! $choice ]] && return 1
-    if [[ -f $menudir/$choice ]]
+    if [[ -n $choice ]] && [[ -f $menudir/$choice ]]
     then
       show_menu $choice
+    else
+      return 1
     fi
   fi
 }
@@ -45,8 +57,8 @@ function select_menu() {
   # Get list of menu files
   for menu ($menudir/*)
   do
-    source $menu
-    LIST[$NAME]+=${menu:t}
+    eval $(grep NAME= $menu | head -1)
+    [[ -n $NAME ]] && LIST[$NAME]+=${menu:t}
   done
 
   choice=$( (_list_items ${(k)LIST[@]}) | eval "$(_get_ui $prompt)")
@@ -62,7 +74,6 @@ function select_menu() {
 function edit_menu() {
   local menu=$1
   local menupath
-  local prompt=${MENUZ_PROMPT_EDIT:-"Edit Menu"}
 
   local -A LIST
   local NAME
@@ -73,20 +84,11 @@ function edit_menu() {
     # Menu name was provided
     menupath=$menudir/$menu
   else
-    # Or present UI to select menu
-    for menu ($menudir/*)
-    do
-      source $menu
-      LIST[$NAME]+=$menu
-    done
+    # Or select menu
+    choice=$(select_menu)
+    menupath=$menudir/$choice
 
-    choice=$( (_list_items ${(k)LIST[@]}) | eval "$(_get_ui $prompt)")
-    if [[ -n $choice ]]
-    then
-      menupath=${LIST[$choice]}
-    else
-      return 1
-    fi
+    [[ ! -f $menupath ]] && return 1
   fi
 
   # If menu name provided doesn't exist, create it
@@ -94,6 +96,7 @@ function edit_menu() {
   then
     if _confirm "Create $menu?"
     then
+      # Write template to new file
       echo -n "NAME=\"New\"\nITEMS=(\n\t[entry]=\"\"\n)" > $menupath
     else
       return 1
@@ -120,9 +123,9 @@ function _detect_ui() {
   # When proc is your shell or tmux, assume CLI, else GUI
   if [[ $proc == $shell ]] || [[ ${proc:t} == "tmux" ]]
   then
-    UI=0
+    UI=0 # CLI
   else
-    UI=1
+    UI=1 # GUI
   fi
 }
 
@@ -145,15 +148,14 @@ function _get_ui() {
 function _rofi() { echo "rofi -dmenu -i -p '$1'" }
 
 # Return CLI picker
-function _fzf() { echo "fzf --reverse --no-info --prompt='$1: '" }
+function _fzf() { echo "fzf -e --reverse --no-info --prompt='$1: '" }
 
-# Return editor
-function _editor() { _run_cmd "##TERM## $editor $1" }
-
+# Yes or no prompt
 function _confirm() {
+  local prompt=$1
   local choice
 
-  choice=$( echo -n "Yes\nNo" | eval "$(_get_ui $1)")
+  choice=$( echo "Yes\nNo" | eval "$(_get_ui $prompt)")
   if [[ ! $choice == Yes ]]
   then
     return 1
@@ -182,21 +184,13 @@ function _run_cmd() {
   eval ${command[@]}
 }
 
-# Not so helpful
-function usage() {
-  echo "menuz [-e] <name>"
-}
+# Help
+function usage() { echo "Usage: menuz [-e] <name>" }
 
+###
 
-# Set path to menu files
-typeset -g menudir=${MENUZ_DIR:-$HOME/.config/menuz}
+# Check for menu directory
 [[ ! -d $menudir ]] && { echo "'$menudir' does not exist!"; exit 1 }
-
-# Set some common programs as globals
-typeset -g terminal="${TERMINAL:-"xterm"} -e" # <- appends '-e'
-typeset -g editor=${EDITOR:-"vim"}
-typeset -g browser=${BROWSER:-"qutebrowser"}
-typeset -g opener=${commands[xdg-open]}
 
 # Detect environment
 typeset -gi UI
